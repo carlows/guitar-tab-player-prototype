@@ -49,14 +49,28 @@ function App() {
       const buffer = new Uint8Array(analyzerNode.fftSize);
       analyzerNode.getByteTimeDomainData(buffer);
 
-      const detectPitch = Pitchfinder.AMDF({sampleRate: context.sampleRate});
-      const pitch = detectPitch(buffer);
+      // https://jameshfisher.com/2021/01/18/measuring-audio-volume-in-javascript/
+      const pcmData = new Float32Array(analyzerNode.fftSize);
+      analyzerNode.getFloatTimeDomainData(pcmData);
 
-      if (pitch) {
-        console.log(pitch, findClosestNote(pitch, notesArray).note, context.currentTime);
-        // console.log(findClosestNote(pitch, notesArray));
-        // console.log("Current time in seconds:", context.currentTime);
-        setClosestNote(findClosestNote(pitch, notesArray)?.note);
+      // detect the volume
+      let sumSquares = 0.0;
+      for (const amplitude of pcmData) {
+        sumSquares += amplitude * amplitude;
+      }
+
+      const volume = Math.sqrt(sumSquares / pcmData.length);
+      // console.log(volume);
+      if (volume >= 0.001) {
+        const detectPitch = Pitchfinder.AMDF({sampleRate: context.sampleRate});
+        const pitch = detectPitch(buffer);
+
+        if (pitch) {
+          console.log(pitch, findClosestNote(pitch, notesArray).note, context.currentTime);
+          // console.log(findClosestNote(pitch, notesArray));
+          // console.log("Current time in seconds:", context.currentTime);
+          setClosestNote(findClosestNote(pitch, notesArray)?.note);
+        }
       }
     }
     // console.log('here', analyzerNode);
@@ -106,11 +120,6 @@ function App() {
     //     // }
     // });
 
-    // setInterval(() => {
-    //   console.log(apiRef.current.timePosition);
-
-    // }, 100);
-
     apiRef.current.soundFontLoaded.on(() => {
       setLoaded(true);
     });
@@ -130,12 +139,6 @@ function App() {
         }
       });
 
-      // setInterval(() => {
-        // The context keeps its own time, this clock is completely separated from setInterval implementation
-        // We always need to use the context time because it's much more accurate
-        // console.log("Current time in seconds:", context.currentTime);
-      // }, 500);
-
       // A workaround to start the audio context without the user interacting with the page (clicking a button)
       if (context.state === 'suspended') {
         await context.resume();
@@ -145,42 +148,26 @@ function App() {
       const analyserAudioNode = context.createAnalyser();
       analyserAudioNode.fftSize = 2048;
       setAnalyzerNode(analyserAudioNode);
-      console.log(analyserAudioNode);
+
       // The media stream source
       // we can perform any changes to the signal in this middle step if needed
       const source = context.createMediaStreamSource(guitar);
+
       // possible
       // source.stop();
       // connect our analyzer to the source media stream
       source.connect(analyserAudioNode);
+
       setSourceReady(true);
 
       // connects the source with the destination, in this case the destination is the laptop speakers
       // or whatever browser audio output is connected
       // source.connect(context.destination);
 
-
-      // A buffer with 2 channels, the second parameter is the duration of the buffer (sample rate * seconds)
-      // const theBuffer = context.createBuffer(2, context.sampleRate * 5, context.sampleRate);
-
       // You can stop the stream using the mediastream tracks.
       // setTimeout(() => {
       //   source.mediaStream.getTracks().forEach((track) => track.stop());
       // }, 5000);
-
-      // setInterval(() => {
-      //   const buffer = new Uint8Array(analyserAudioNode.fftSize);
-      //   analyserAudioNode.getByteTimeDomainData(buffer);
-      //   // console.log(buffer);
-
-      //   const detectPitch = Pitchfinder.AMDF({sampleRate: context.sampleRate});
-      //   const pitch = detectPitch(buffer);
-
-      //   if (pitch) {
-      //     console.log(pitch);
-      //     console.log(findClosestNote(pitch, notesArray));
-      //   }
-      // }, 100);
 
       // https://developer.mozilla.org/en-US/docs/Web/API/OfflineAudioContext
       // It's possible to use this as the output source rather than listening back
