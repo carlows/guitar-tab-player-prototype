@@ -39,6 +39,29 @@ function App() {
   const playerContainer = useRef(null);
   const apiRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
+  const [analyzerNode, setAnalyzerNode] = useState(null);
+  const calculationRef = useRef(null);
+  const [closestNote, setClosestNote] = useState(null);
+  const [sourceReady, setSourceReady] = useState(false);
+
+  const recalculate = () => {
+    if (analyzerNode != null) {
+      const buffer = new Uint8Array(analyzerNode.fftSize);
+      analyzerNode.getByteTimeDomainData(buffer);
+
+      const detectPitch = Pitchfinder.AMDF({sampleRate: context.sampleRate});
+      const pitch = detectPitch(buffer);
+
+      if (pitch) {
+        console.log(pitch, findClosestNote(pitch, notesArray).note, context.currentTime);
+        // console.log(findClosestNote(pitch, notesArray));
+        // console.log("Current time in seconds:", context.currentTime);
+        setClosestNote(findClosestNote(pitch, notesArray)?.note);
+      }
+    }
+    // console.log('here', analyzerNode);
+    calculationRef.current = requestAnimationFrame(recalculate);
+  };
 
   useEffect(() => {
     apiRef.current = new window.alphaTab.AlphaTabApi(playerContainer.current, {
@@ -61,27 +84,27 @@ function App() {
       }
     });
 
-    apiRef.current.playerStateChanged.on(e => {
-        // reset to 1 when stopped
-        console.log(e);
-        // if(e.stopped) {
-        //     console.log(stopped);
-        // }
-    });
-    apiRef.current.playedBeatChanged.on(e => {
-      console.log(e);
-      console.log(apiRef.current.timePosition);
-        // for (const midi of e.events) { // loop through all played events
-        //     console.log(midi);
-        // }
-    });
-    apiRef.current.player.midiEventsPlayed.on(e => {
-      console.log(e);
-        console.log(apiRef.current.timePosition);
-        // for (const midi of e.events) { // loop through all played events
-        //     console.log(midi);
-        // }
-    });
+    // apiRef.current.playerStateChanged.on(e => {
+    //     // reset to 1 when stopped
+    //     console.log(e);
+    //     // if(e.stopped) {
+    //     //     console.log(stopped);
+    //     // }
+    // });
+    // apiRef.current.playedBeatChanged.on(e => {
+    //   console.log(e);
+    //   console.log(apiRef.current.timePosition);
+    //     // for (const midi of e.events) { // loop through all played events
+    //     //     console.log(midi);
+    //     // }
+    // });
+    // apiRef.current.player.midiEventsPlayed.on(e => {
+    //   console.log(e);
+    //     console.log(apiRef.current.timePosition);
+    //     // for (const midi of e.events) { // loop through all played events
+    //     //     console.log(midi);
+    //     // }
+    // });
 
     // setInterval(() => {
     //   console.log(apiRef.current.timePosition);
@@ -107,11 +130,11 @@ function App() {
         }
       });
 
-      setInterval(() => {
+      // setInterval(() => {
         // The context keeps its own time, this clock is completely separated from setInterval implementation
         // We always need to use the context time because it's much more accurate
         // console.log("Current time in seconds:", context.currentTime);
-      }, 500);
+      // }, 500);
 
       // A workaround to start the audio context without the user interacting with the page (clicking a button)
       if (context.state === 'suspended') {
@@ -121,13 +144,16 @@ function App() {
       // analyzers allow us to get information about the signal
       const analyserAudioNode = context.createAnalyser();
       analyserAudioNode.fftSize = 2048;
-
+      setAnalyzerNode(analyserAudioNode);
+      console.log(analyserAudioNode);
       // The media stream source
       // we can perform any changes to the signal in this middle step if needed
       const source = context.createMediaStreamSource(guitar);
-
+      // possible
+      // source.stop();
       // connect our analyzer to the source media stream
       source.connect(analyserAudioNode);
+      setSourceReady(true);
 
       // connects the source with the destination, in this case the destination is the laptop speakers
       // or whatever browser audio output is connected
@@ -155,11 +181,21 @@ function App() {
       //     console.log(findClosestNote(pitch, notesArray));
       //   }
       // }, 100);
+
+      // https://developer.mozilla.org/en-US/docs/Web/API/OfflineAudioContext
+      // It's possible to use this as the output source rather than listening back
     };
 
     setupContext()
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (sourceReady) {
+      calculationRef.current = requestAnimationFrame(recalculate);
+      return () => cancelAnimationFrame(calculationRef.current);
+    }
+  }, [sourceReady]);
 
   return (
     <div className="App">
@@ -182,11 +218,14 @@ function App() {
       </button>
 
       <div ref={playerContainer} data-tex="true">
-      \title "Hello alphaTab"
-      \tempo 60
+      \tempo 120
       . \ts 4 4 0.6.8 1.6.8 3.6.8 0.5.8 0.6.8 1.6.8 3.6.8 0.5.8 | 2.5.4 3.5.4 0.4.4 2.4.4 |
         3.4.4 0.3.4 2.3.4 0.2.4 | 1.2.4 3.2.4 0.1.4 1.1.4 |
         3.1.1
+      </div>
+
+      <div>
+        Closest note: {closestNote}
       </div>
     </div>
   );
