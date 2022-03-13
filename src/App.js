@@ -1,10 +1,10 @@
-import logo from './logo.svg';
 import './App.css';
 import styled from 'styled-components';
 import { useEffect, useRef, useState } from 'react';
 import guitar from './assets/distortedguitar.sf2';
 import * as Pitchfinder from 'pitchfinder';
 import notes from './assets/notes.json';
+import noteDeduplicator from './noteDeduplicator';
 
 const baseFreq = 440;
 const notesArray = notes[baseFreq];
@@ -43,6 +43,12 @@ function App() {
   const calculationRef = useRef(null);
   const [closestNote, setClosestNote] = useState(null);
   const [sourceReady, setSourceReady] = useState(false);
+  const [noteState, setNoteState] = useState({
+    recording: false,
+    recordingTimeStart: null,
+    playedNotes: [],
+    filteredNotes: []
+  });
 
   const recalculate = () => {
     if (analyzerNode != null) {
@@ -60,16 +66,36 @@ function App() {
       }
 
       const volume = Math.sqrt(sumSquares / pcmData.length);
-      // console.log(volume);
-      if (volume >= 0.001) {
+
+      if (volume >= 0.005) {
         const detectPitch = Pitchfinder.AMDF({sampleRate: context.sampleRate});
         const pitch = detectPitch(buffer);
 
         if (pitch) {
-          console.log(pitch, findClosestNote(pitch, notesArray).note, context.currentTime);
+          // console.log(pitch, findClosestNote(pitch, notesArray).note, context.currentTime);
           // console.log(findClosestNote(pitch, notesArray));
           // console.log("Current time in seconds:", context.currentTime);
-          setClosestNote(findClosestNote(pitch, notesArray)?.note);
+          const closestNote = findClosestNote(pitch, notesArray);
+
+          setClosestNote(closestNote?.note);
+
+          if (closestNote) {
+            setNoteState(state => {
+              if (state.recording) {
+                return {
+                  ...state,
+                  playedNotes: [...state.playedNotes, {
+                    note: closestNote.note,
+                    frequency: closestNote.frequency,
+                    relativeTime: context.currentTime - state.recordingTimeStart,
+                    volume: volume
+                  }]
+                };
+              }
+
+              return state;
+            })
+          }
         }
       }
     }
@@ -213,6 +239,46 @@ function App() {
 
       <div>
         Closest note: {closestNote}
+      </div>
+
+      <div>
+        <button onClick={() => {
+          if (!noteState.recording) {
+            setNoteState({
+              recording: true,
+              playedNotes: [],
+              filteredNotes: [],
+              recordingTimeStart: context.currentTime
+            });
+            return;
+          }
+
+          setNoteState({
+            ...noteState,
+            recording: false,
+            filteredNotes: noteDeduplicator(noteState.playedNotes)
+          });
+        }}>
+          {noteState.recording ? "stop" : "record"}
+        </button>
+        <div>
+          Time when the recording started: {noteState.recordingTimeStart}
+          <br />
+          <p>All notes played:</p>
+          <div>
+            <textarea disabled={true} style={{width: '650px', height: '350px'}} value={
+              noteState.playedNotes.map(({note, volume, relativeTime}) => (`Played ${note} - volume: ${volume} - at: ${relativeTime}`)).join('\n')
+            } />
+          </div>
+
+          <p>Filtered notes (only after stop):</p>
+          <div>
+
+            <textarea disabled={true} style={{width: '650px', height: '350px'}} value={
+              noteState.filteredNotes.map(({note, volume, relativeTime}) => (`Played ${note} - volume: ${volume} - at: ${relativeTime}`)).join('\n')
+            } />
+          </div>
+        </div>
       </div>
     </div>
   );
